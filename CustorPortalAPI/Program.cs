@@ -31,7 +31,7 @@ builder.Services.AddAuthentication(options =>
         ValidateLifetime = true,
         ValidateIssuerSigningKey = true,
         ValidIssuer = builder.Configuration["Jwt:Issuer"],
-        ValidAudience = builder.Configuration["jwt:Audience"],
+        ValidAudience = builder.Configuration["Jwt:Audience"],
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:Key"]))
 
     };
@@ -84,6 +84,7 @@ builder.Services.AddSwaggerGen(c =>
 
 var app = builder.Build();
 
+//
 // Use Swagger in development
 if (app.Environment.IsDevelopment())
 {

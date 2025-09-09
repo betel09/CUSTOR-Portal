@@ -3,12 +3,9 @@ FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
      EXPOSE 80
      EXPOSE 443
 
-     FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-     WORKDIR /src
-     COPY ["CustorPortalAPI/CustorPortalAPI.csproj", "."]
-     RUN dotnet restore "./CustorPortalAPI.csproj"
-     COPY . .
-     WORKDIR "/src/."
+     FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build 
+     WORKDIR /src COPY . . 
+     RUN dotnet restore "CustorPortalAPI.csproj" 
      RUN dotnet build "CustorPortalAPI.csproj" -c Release -o /app/build
 
      FROM build AS publish

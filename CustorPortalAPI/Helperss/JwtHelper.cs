@@ -7,12 +7,13 @@ namespace CustorPortalAPI.Helpers
 {
     public static class JwtHelper
     {
-        public static string GenerateJwtToken(int userKey, string email, IConfiguration configuration)
+        public static string GenerateJwtToken(int userKey, string email, string role, IConfiguration configuration)
         {
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, userKey.ToString()),
-                new Claim(ClaimTypes.Email, email)
+                new Claim(ClaimTypes.Email, email),
+                new Claim(ClaimTypes.Role, role)
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(configuration["Jwt:Key"]));

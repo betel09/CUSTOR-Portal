@@ -10,7 +10,7 @@ namespace CustorPortalAPI.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
-    [AllowAnonymous]
+    [Authorize]
     public class TasksController : ControllerBase
     {
         private readonly CustorPortalDbContext _context;
