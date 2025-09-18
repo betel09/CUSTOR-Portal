@@ -6,6 +6,9 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CustorPortalAPI.Controllers
 {
+    /// <summary>
+    /// Controller for managing task assignees
+    /// </summary>
     [Route("api/tasks/{taskId}/assignees")]
     [ApiController]
     [AllowAnonymous]
@@ -13,6 +16,10 @@ namespace CustorPortalAPI.Controllers
     {
         private readonly CustorPortalDbContext _context;
 
+        /// <summary>
+        /// Initializes a new instance of the TaskAssigneesController
+        /// </summary>
+        /// <param name="context">The database context</param>
         public TaskAssigneesController(CustorPortalDbContext context)
         {
             _context = context;
@@ -20,6 +27,12 @@ namespace CustorPortalAPI.Controllers
 
        
 
+        /// <summary>
+        /// Assigns a user to a task
+        /// </summary>
+        /// <param name="taskId">The ID of the task</param>
+        /// <param name="request">The assignment request containing user information</param>
+        /// <returns>Created result with assignment details</returns>
         [HttpPost]
         public async Task<IActionResult> AssignUser(int taskId, [FromBody] TaskAssigneeRequest request)
         {
@@ -57,27 +70,37 @@ namespace CustorPortalAPI.Controllers
             });
                 
         }
-       [HttpGet]
-public async Task<IActionResult> GetTasks()
-{
-    var tasks = await _context.Tasks
-        .Include(t => t.TaskAssignees)
-            .ThenInclude(ta => ta.User)
-        .Select(t => new {
-            t.TaskKey,
-            t.Title,
-            t.Description,
-            t.Status,
-            t.Priority,
-            t.Deadline,
-            // ... other fields ...
-            Assignee = t.TaskAssignees.Select(ta => ta.User.Email).FirstOrDefault() // or .ToList() for multiple
-        })
-        .ToListAsync();
+        /// <summary>
+        /// Gets all tasks with their assignees
+        /// </summary>
+        /// <returns>List of tasks with assignee information</returns>
+        [HttpGet]
+        public async Task<IActionResult> GetTasks()
+        {
+            var tasks = await _context.Tasks
+                .Include(t => t.TaskAssignees!)
+                    .ThenInclude(ta => ta.User)
+                .Select(t => new {
+                    t.TaskKey,
+                    t.Title,
+                    t.Description,
+                    t.Status,
+                    t.Priority,
+                    t.Deadline,
+                    // ... other fields ...
+                    Assignee = t.TaskAssignees!.Select(ta => ta.User!.Email).FirstOrDefault() // or .ToList() for multiple
+                })
+                .ToListAsync();
 
-    return Ok(tasks);
-}
+            return Ok(tasks);
+        }
 
+        /// <summary>
+        /// Unassigns a user from a task
+        /// </summary>
+        /// <param name="taskId">The ID of the task</param>
+        /// <param name="userId">The ID of the user to unassign</param>
+        /// <returns>No content result</returns>
         [HttpDelete("{userId}")]
         public async Task<IActionResult> UnassignUserFromTask(int taskId, int userId)
         {
@@ -92,15 +115,19 @@ public async Task<IActionResult> GetTasks()
             var task = await _context.Tasks
                 .Include(t => t.Project)
                 .FirstOrDefaultAsync(t => t.TaskKey == taskId);
-            var notification = new Notification
+            
+            if (task?.Project != null)
             {
-                UserId = userId,
-                Message = $"You have been unassigned from task '{task.Title} ' in project ' {task.Project.Name}'",
-                Link = $"/tasks/{taskId}",
-                Timestamp = DateTime.UtcNow,
-                Read = false
-            };
-            _context.Notifications.Add(notification);
+                var notification = new Notification
+                {
+                    UserId = userId,
+                    Title = "Task Unassigned",
+                    Message = $"You have been unassigned from task '{task.Title}' in project '{task.Project.Name}'",
+                    Type = "task_assigned",
+                    CreatedAt = DateTime.UtcNow
+                };
+                _context.Notifications.Add(notification);
+            }
 
             await _context.SaveChangesAsync();
 
@@ -108,8 +135,14 @@ public async Task<IActionResult> GetTasks()
         }
     }
 
+    /// <summary>
+    /// Request model for assigning a user to a task
+    /// </summary>
     public class TaskAssigneeRequest
     {
+        /// <summary>
+        /// The key of the user to assign to the task
+        /// </summary>
         public int UserKey { get; set; }
     }
 }

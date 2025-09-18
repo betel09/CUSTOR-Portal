@@ -11,6 +11,7 @@ public class Comment
     public int UserId { get; set; }
     public DateTime Timestamp { get; set; }
     public string? Mentions { get; set; } 
+    public string? TargetUserId { get; set; } // New field for targeting specific users/teams
     public bool IsDeleted { get; set; }
     public DateTime? DeletedAt { get; set; }
 

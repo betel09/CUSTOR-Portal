@@ -21,7 +21,10 @@ public  class User
 
     public bool? Is_Active { get; set; }
 
-        public Role? Role { get; set; }
+    public int? TeamKey { get; set; }
+
+    public Role? Role { get; set; }
+    public Team? Team { get; set; }
     }
 
  }

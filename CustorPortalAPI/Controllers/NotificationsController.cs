@@ -1,14 +1,13 @@
-﻿using CustorPortalAPI.Data;
-using CustorPortalAPI.Models;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using CustorPortalAPI.Data;
+using CustorPortalAPI.Models;
+using System.Security.Claims;
 
 namespace CustorPortalAPI.Controllers
 {
-    [Route("api/users/{userId:int}/notifications")]
     [ApiController]
-    [AllowAnonymous]
+    [Route("api/[controller]")]
     public class NotificationsController : ControllerBase
     {
         private readonly CustorPortalDbContext _context;
@@ -18,95 +17,165 @@ namespace CustorPortalAPI.Controllers
             _context = context;
         }
 
+        // GET: api/notifications
         [HttpGet]
-        public async Task<IActionResult> GetNotifications(int userId)
+        public async Task<ActionResult<IEnumerable<object>>> GetNotifications()
         {
-            if (userId <= 0)
-                return BadRequest("Invalid UserId");
-
-            var userExists = await _context.Users.AnyAsync(u => u.UserKey == userId);
-            if (!userExists)
-                return NotFound($"User with ID {userId} not found.");
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("User not authenticated");
+            }
 
             var notifications = await _context.Notifications
                 .Where(n => n.UserId == userId)
-                .Include(n => n.User)
-                .ThenInclude(u => u.Role)
+                .OrderByDescending(n => n.CreatedAt)
                 .Select(n => new
                 {
                     n.Id,
+                    n.Title,
                     n.Message,
-                    n.Link,
-                    IsRead = n.Read, // Fixed the property name
-                    n.Timestamp,
-                    User = new
-                    {
-                        n.User.UserKey,
-                        n.User.Email,
-                        n.User.First_Name,
-                        n.User.Last_Name,
-                        Role = new
-                        {
-                            n.User.Role.RoleKey,
-                            n.User.Role.Role_Name
-                        }
-                    }
+                    n.Type,
+                    n.IsRead,
+                    n.CreatedAt,
+                    n.RelatedId,
+                    n.RelatedType
                 })
                 .ToListAsync();
 
             return Ok(notifications);
         }
 
-        [HttpPut("{id}")]
-        public async Task<IActionResult> MarkAsRead(int userId, int id)
+        // GET: api/notifications/unread-count
+        [HttpGet("unread-count")]
+        public async Task<ActionResult<int>> GetUnreadCount()
         {
-            var notification = await _context.Notifications
-                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
-            if (notification == null)
-                return NotFound($"Notification with ID {id} for User {userId} not found.");
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("User not authenticated");
+            }
 
-            notification.Read = true;
-            await _context.SaveChangesAsync();
+            var count = await _context.Notifications
+                .CountAsync(n => n.UserId == userId && !n.IsRead);
 
-            return Ok(new { id = notification.Id, isRead = notification.Read });
+            return Ok(count);
         }
 
-        [HttpPost]
-        public async Task<IActionResult> CreateNotification(int userId, [FromBody] NotificationCreateRequest request)
+        // PUT: api/notifications/{id}/read
+        [HttpPut("{id}/read")]
+        public async Task<IActionResult> MarkAsRead(int id)
         {
-            if (string.IsNullOrWhiteSpace(request.Message) || string.IsNullOrWhiteSpace(request.Link))
-                return BadRequest("Message and Link are required.");
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("User not authenticated");
+            }
 
-            var userExists = await _context.Users.AnyAsync(u => u.UserKey == userId);
-            if (!userExists)
-                return NotFound($"User with ID {userId} not found.");
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
+
+            if (notification == null)
+            {
+                return NotFound();
+            }
+
+            notification.IsRead = true;
+            await _context.SaveChangesAsync();
+
+            return Ok();
+        }
+
+        // PUT: api/notifications/mark-all-read
+        [HttpPut("mark-all-read")]
+        public async Task<IActionResult> MarkAllAsRead()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("User not authenticated");
+            }
+
+            var notifications = await _context.Notifications
+                .Where(n => n.UserId == userId && !n.IsRead)
+                .ToListAsync();
+
+            foreach (var notification in notifications)
+            {
+                notification.IsRead = true;
+            }
+
+            await _context.SaveChangesAsync();
+
+            return Ok();
+        }
+
+        // POST: api/notifications
+        [HttpPost]
+        public async Task<ActionResult<object>> CreateNotification([FromBody] NotificationRequest request)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int currentUserId))
+            {
+                return Unauthorized("User not authenticated");
+            }
+
+            // Verify the user exists
+            var user = await _context.Users.FindAsync(request.UserId);
+            if (user == null)
+            {
+                return BadRequest("Target user not found");
+            }
 
             var notification = new Notification
             {
-                UserId = userId,
+                UserId = request.UserId,
+                Title = request.Title,
                 Message = request.Message,
-                Link = request.Link,
-                Timestamp = DateTime.UtcNow,
-                Read = false
+                Type = request.Type,
+                RelatedId = request.RelatedId,
+                RelatedType = request.RelatedType,
+                CreatedAt = DateTime.UtcNow
             };
 
             _context.Notifications.Add(notification);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetNotifications), new { userId = userId }, new
+            return CreatedAtAction(nameof(GetNotifications), new { id = notification.Id }, new
             {
                 notification.Id,
+                notification.Title,
                 notification.Message,
-                notification.Link,
-                notification.Read,
-                notification.Timestamp
+                notification.Type,
+                notification.IsRead,
+                notification.CreatedAt,
+                notification.RelatedId,
+                notification.RelatedType
             });
         }
-    }
 
-    public class NotificationCreateRequest
-    {
-        public string Message { get; set; }
-        public string Link { get; set; }
+        // DELETE: api/notifications/{id}
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteNotification(int id)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized("User not authenticated");
+            }
+
+            var notification = await _context.Notifications
+                .FirstOrDefaultAsync(n => n.Id == id && n.UserId == userId);
+
+            if (notification == null)
+            {
+                return NotFound();
+            }
+
+            _context.Notifications.Remove(notification);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
     }
 }

@@ -61,9 +61,10 @@ namespace CustorPortalAPI.Controllers
                         _context.Notifications.Add(new Notification
                         {
                             UserId = mentionedUser.UserKey,
+                            Title = "Mentioned in Task Comment",
                             Message = $"{user.First_Name} {user.Last_Name} mentioned you in a comment on task {task.Title}",
-                            Link = $"/tasks/{taskId}",
-                            Timestamp = DateTime.UtcNow
+                            Type = "comment",
+                            CreatedAt = DateTime.UtcNow
                         });
                     }
                 }
@@ -133,8 +134,8 @@ namespace CustorPortalAPI.Controllers
 
     public class CommentRequest
     {
-        public string Text { get; set; }
-        public List<string> Mentions { get; set; }
+        public string Text { get; set; } = string.Empty;
+        public List<string> Mentions { get; set; } = new List<string>();
         public int UserId { get; set; }
     }
 }

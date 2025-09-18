@@ -2,6 +2,7 @@
 using Microsoft.EntityFrameworkCore;
 using File = CustorPortalAPI.Models.File;
 using Task = CustorPortalAPI.Models.Task;
+using Comment = CustorPortalAPI.Models.Comment;
 
 namespace CustorPortalAPI.Data
 {
@@ -18,6 +19,8 @@ namespace CustorPortalAPI.Data
         public DbSet<Comment> Comments { get; set; }
         public DbSet<Notification> Notifications { get; set; }
         public DbSet<UserProject> UserProjects { get; set; }
+        public DbSet<Team> Teams { get; set; }
+        public DbSet<TeamMember> TeamMembers { get; set; }
 
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -31,6 +34,8 @@ namespace CustorPortalAPI.Data
             modelBuilder.Entity<Comment>().ToTable("Comments");
             modelBuilder.Entity<Notification>().ToTable("Notifications");
             modelBuilder.Entity<UserProject>().ToTable("UserProjects");
+            modelBuilder.Entity<Team>().ToTable("Teams");
+            modelBuilder.Entity<TeamMember>().ToTable("TeamMembers");
 
             modelBuilder.Entity<User>().HasKey(u => u.UserKey);
             modelBuilder.Entity<Role>().HasKey(r => r.RoleKey);
@@ -39,12 +44,16 @@ namespace CustorPortalAPI.Data
             modelBuilder.Entity<File>().HasKey(f => f.FileKey); // Ensure File has a key
             modelBuilder.Entity<Comment>().HasKey(c => c.Id);
             modelBuilder.Entity<Notification>().HasKey(n => n.Id);
+            modelBuilder.Entity<Team>().HasKey(t => t.TeamKey);
 
             modelBuilder.Entity<TaskAssignee>()
                 .HasKey(ta => new { ta.Taskkey, ta.UserKey });
 
             modelBuilder.Entity<UserProject>()
                 .HasKey(up => new { up.UserKey, up.ProjectKey });
+
+            modelBuilder.Entity<TeamMember>()
+                .HasKey(tm => new { tm.TeamKey, tm.UserKey });
 
             // Map Role properties
             modelBuilder.Entity<Role>()
@@ -115,6 +124,12 @@ namespace CustorPortalAPI.Data
                 .HasOne(u => u.Role)
                 .WithMany(r => r.Users)
                 .HasForeignKey(u => u.RoleKey);
+
+            modelBuilder.Entity<User>()
+                .HasOne(u => u.Team)
+                .WithMany(t => t.Users)
+                .HasForeignKey(u => u.TeamKey)
+                .IsRequired(false);
 
             modelBuilder.Entity<Project>()
                 .HasOne(p => p.Creator)
@@ -205,6 +220,26 @@ namespace CustorPortalAPI.Data
            modelBuilder.Entity<Comment>()
                 .Property(c => c.Mentions)
                 .HasColumnName("Mentions");
+            
+            modelBuilder.Entity<Comment>()
+                .Property(c => c.TargetUserId)
+                .HasColumnName("TargetUserId");
+
+            // Configure Notification entity
+            modelBuilder.Entity<Notification>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Title).HasMaxLength(200).IsRequired();
+                entity.Property(e => e.Message).HasMaxLength(500).IsRequired();
+                entity.Property(e => e.Type).HasMaxLength(50).IsRequired();
+                entity.Property(e => e.RelatedType).HasMaxLength(50);
+                entity.Property(e => e.CreatedAt).HasDefaultValueSql("GETUTCDATE()");
+                
+                entity.HasOne(e => e.User)
+                    .WithMany()
+                    .HasForeignKey(e => e.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
             // Map UserProject properties
             modelBuilder.Entity<UserProject>()
                 .Property(up => up.UserKey)
@@ -218,6 +253,76 @@ namespace CustorPortalAPI.Data
             modelBuilder.Entity<UserProject>()
                 .Property(up => up.Assigned_at)
                 .HasColumnName("Assigned_at"); // Map to snake_case
+
+            // Team table configuration
+            modelBuilder.Entity<Team>()
+                .HasKey(t => t.TeamKey);
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.TeamKey)
+                .HasColumnName("TeamKey");
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.Name)
+                .HasColumnName("Name")
+                .IsRequired()
+                .HasMaxLength(100);
+            
+            // Ignore TeamName property - it's just a wrapper around Name
+            modelBuilder.Entity<Team>()
+                .Ignore(t => t.TeamName);
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.Description)
+                .HasColumnName("Description")
+                .HasMaxLength(500);
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.Created_At)
+                .HasColumnName("Created_At")
+                .IsRequired();
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.Updated_At)
+                .HasColumnName("Updated_At");
+            
+            modelBuilder.Entity<Team>()
+                .Property(t => t.Is_Active)
+                .HasColumnName("Is_Active")
+                .HasDefaultValue(true);
+
+            // TeamMember table configuration
+            modelBuilder.Entity<TeamMember>()
+                .HasKey(tm => new { tm.TeamKey, tm.UserKey });
+            
+            modelBuilder.Entity<TeamMember>()
+                .Property(tm => tm.TeamKey)
+                .HasColumnName("TeamKey");
+            
+            modelBuilder.Entity<TeamMember>()
+                .Property(tm => tm.UserKey)
+                .HasColumnName("UserKey");
+            
+            modelBuilder.Entity<TeamMember>()
+                .Property(tm => tm.Joined_At)
+                .HasColumnName("Joined_At")
+                .IsRequired();
+            
+            modelBuilder.Entity<TeamMember>()
+                .Property(tm => tm.Is_Active)
+                .HasColumnName("Is_Active")
+                .HasDefaultValue(true);
+
+            // Team relationships
+            modelBuilder.Entity<TeamMember>()
+                .HasOne(tm => tm.Team)
+                .WithMany(t => t.TeamMembers)
+                .HasForeignKey(tm => tm.TeamKey);
+
+            modelBuilder.Entity<TeamMember>()
+                .HasOne(tm => tm.User)
+                .WithMany()
+                .HasForeignKey(tm => tm.UserKey);
         }
     }
 }

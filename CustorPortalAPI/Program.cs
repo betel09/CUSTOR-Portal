@@ -1,5 +1,6 @@
 using CustorPortalAPI.Data;
 using CustorPortalAPI.Filters;
+using CustorPortalAPI.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi.Models;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -44,6 +45,9 @@ builder.Services.AddAuthentication(options =>
 builder.Services.AddDbContext<CustorPortalDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection"),
        x => x.CommandTimeout(60)));
+
+// Add email service
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Add controllers
 builder.Services.AddControllers()

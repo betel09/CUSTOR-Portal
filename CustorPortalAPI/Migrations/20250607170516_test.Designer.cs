@@ -13,7 +13,7 @@ namespace CustorPortalAPI.Migrations
 {
     [DbContext(typeof(CustorPortalDbContext))]
     [Migration("20250607170516_test")]
-    partial class test
+    partial class UpdateDatabaseSchema
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)

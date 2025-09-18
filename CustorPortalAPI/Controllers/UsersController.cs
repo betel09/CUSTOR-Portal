@@ -1,6 +1,7 @@
 ﻿using CustorPortalAPI.Data;
 using CustorPortalAPI.Helpers;
 using CustorPortalAPI.Models;
+using CustorPortalAPI.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity.Data;
 using Microsoft.AspNetCore.Mvc;
@@ -15,12 +16,16 @@ namespace CustorPortalAPI.Controllers
     {
         private readonly CustorPortalDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IEmailService _emailService;
 
-        public UsersController(CustorPortalDbContext context, IConfiguration configuration)
+        public UsersController(CustorPortalDbContext context, IConfiguration configuration, IEmailService emailService)
         {
             _context = context;
             _configuration = configuration;
+            _emailService = emailService;
         }
+        public record ForgotPasswordRequest(string Email);
+        public record ResetPasswordRequest(string Token, string NewPassword);
         [HttpPost("login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
@@ -51,6 +56,51 @@ namespace CustorPortalAPI.Controllers
                     Role=user.Role.Role_Name
                 }
             });
+        }
+        [HttpPost("forgot-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Email))
+                return BadRequest("Email is required.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
+            if (user == null)
+            {
+                // Do not reveal user existence
+                return Ok(new { message = "If the email exists, a reset link has been sent." });
+            }
+
+            var resetToken = JwtHelper.GeneratePasswordResetToken(user.Email, _configuration, TimeSpan.FromMinutes(30));
+            var frontendBase = _configuration["Frontend:BaseUrl"] ?? "http://localhost:4200";
+            var resetLink = $"{frontendBase}/reset-password?token={Uri.EscapeDataString(resetToken)}";
+
+            // Send email
+            await _emailService.SendPasswordResetEmailAsync(user.Email, resetLink);
+
+            return Ok(new { message = "If the email exists, a reset link has been sent." });
+        }
+
+        [HttpPost("reset-password")]
+        [AllowAnonymous]
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))
+                return BadRequest("Token and new password are required.");
+
+            if (!IsValidPassword(request.NewPassword))
+                return BadRequest("Password must meet complexity requirements.");
+
+            if (!JwtHelper.TryValidatePasswordResetToken(request.Token, _configuration, out var email) || string.IsNullOrWhiteSpace(email))
+                return BadRequest("Invalid or expired token.");
+
+            var user = await _context.Users.FirstOrDefaultAsync(u => u.Email.ToLower() == email.ToLower());
+            if (user == null) return BadRequest("Invalid user.");
+
+            user.Password_Hash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Password reset successful." });
         }
         [HttpPost("register")]
         [Authorize(Roles = "Admin")]
@@ -149,6 +199,47 @@ namespace CustorPortalAPI.Controllers
             return Ok(new { message = "Admin access confirmed!" });
         }
 
+        [HttpPut("{userId}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateUserRole(int userId, [FromBody] UpdateUserRoleRequest request)
+        {
+            try
+            {
+                var user = await _context.Users
+                    .Include(u => u.Role)
+                    .FirstOrDefaultAsync(u => u.UserKey == userId);
+
+                if (user == null)
+                    return NotFound($"User with ID {userId} not found.");
+
+                // Find the role by name
+                var role = await _context.Roles
+                    .FirstOrDefaultAsync(r => r.Role_Name == request.Role);
+
+                if (role == null)
+                    return BadRequest($"Role '{request.Role}' not found.");
+
+                // Update the user's role
+                user.RoleKey = role.RoleKey;
+                user.Updated_At = DateTime.UtcNow;
+
+                await _context.SaveChangesAsync();
+
+                return Ok(new { 
+                    message = "User role updated successfully.",
+                    user = new {
+                        user.UserKey,
+                        user.Email,
+                        Role = role.Role_Name
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { message = "Failed to update user role", error = ex.Message });
+            }
+        }
+
         
         private bool IsValidPassword(string password)
         {
@@ -172,5 +263,10 @@ namespace CustorPortalAPI.Controllers
         public string? FirstName { get; set; }
         public string? LastName { get; set; }
         public int RoleKey { get; set; }
+    }
+
+    public class UpdateUserRoleRequest
+    {
+        public string Role { get; set; } = string.Empty;
     }
 }
